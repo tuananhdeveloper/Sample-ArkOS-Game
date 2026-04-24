@@ -1,0 +1,56 @@
+project(':core') {
+  def backendVersion = '0.1.1'
+  def backendDep = "io.github.tuananhdeveloper:gdx-backend-sdl2-arkos:${backendVersion}"
+  repositories { mavenLocal() }
+  configurations {
+    gdxBackendArkOs
+  }
+
+  dependencies {
+    gdxBackendArkOs backendDep
+  }
+
+  if (!tasks.findByName('gameFatJar')) {
+    tasks.register('gameFatJar', Jar) {
+      archiveFileName = 'game.jar'
+      group = 'build'
+      description = 'Assembles a fat jar containing game and all dependencies'
+      duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+      from sourceSets.main.output
+      from {
+        def fullDeps = configurations.runtimeClasspath + project.configurations.gdxBackendArkOs
+        fullDeps.collect { it.isDirectory() ? it : zipTree(it) }
+      }
+    }
+  }
+}
+
+tasks.register('assemblePort', Sync) {
+  dependsOn ':core:gameFatJar'
+
+  def outputDir = layout.buildDirectory.dir('port')
+  into outputDir
+
+  from(project(':core').tasks.named('gameFatJar')) { into '.' }
+  from("${rootProject.projectDir}/port") { into '.' }
+  from("${rootProject.projectDir}/native/build/launcher") { into '.' }
+
+  // Handle .so locations
+  from("${rootProject.projectDir}/native/build") {
+    into '.'
+    include 'libgdx_sdl2_arkos.so'
+    include 'lib/libgdx_sdl2_arkos.so'
+    eachFile { details ->
+      if (details.name == 'libgdx_sdl2_arkos.so') details.path = 'libgdx_sdl2_arkos.so'
+    }
+    includeEmptyDirs = false
+  }
+
+  from("${rootProject.projectDir}/assets") { into 'assets' }
+
+  doLast {
+    def runScript = outputDir.get().file('run.sh').asFile
+    if (runScript.exists()) runScript.setExecutable(true)
+  }
+}
